@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>La Caja — Calculadora de cambio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAF6EC;
+    --ink:#1A1A1A;
+    --till:#0B3D2E;
+    --till-dark:#082B21;
+    --amber:#E8A33D;
+    --red:#C1443C;
+    --line: rgba(26,26,26,0.12);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--till-dark);
+    font-family:'Space Grotesk', sans-serif;
+    color:var(--ink);
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:0;
+  }
+  .phone{
+    width:100%;
+    max-width:480px;
+    min-height:100vh;
+    background:var(--till);
+    display:flex;
+    flex-direction:column;
+  }
+  header{
+    padding:22px 20px 16px;
+    color:var(--paper);
+  }
+  header .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    opacity:.65;
+  }
+  header h1{
+    font-family:'Archivo Black', sans-serif;
+    font-size:26px;
+    margin:4px 0 0;
+    letter-spacing:-0.01em;
+  }
+
+  .ticket{
+    background:var(--paper);
+    margin:14px 16px 0;
+    border-radius:14px 14px 0 0;
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 -6px 24px rgba(0,0,0,.25);
+    position:relative;
+    overflow:hidden;
+  }
+
+  .screen{
+    padding:20px 20px 10px;
+  }
+  .field-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:rgba(26,26,26,.55);
+    margin-bottom:6px;
+  }
+  .amount-row{
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:8px;
+    margin-bottom:18px;
+  }
+  .currency{ font-family:'JetBrains Mono', monospace; font-size:22px; opacity:.5;}
+  input.amount, div.amount{
+    border:none;
+    background:transparent;
+    font-family:'JetBrains Mono', monospace;
+    font-size:34px;
+    font-weight:700;
+    width:100%;
+    outline:none;
+    color:var(--ink);
+  }
+  div.amount{ min-height:41px; }
+  input.amount::placeholder{ color: rgba(26,26,26,.25); }
+
+  .quick-bills{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:18px;
+  }
+  .bill-btn{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:13px;
+    border:1.5px solid var(--ink);
+    background:transparent;
+    padding:8px 12px;
+    border-radius:8px;
+    cursor:pointer;
+  }
+  .bill-btn:active{ background:var(--ink); color:var(--paper); }
+
+  .calc-subtotal{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    color:rgba(26,26,26,.5);
+    min-height:16px;
+    margin:-10px 0 8px;
+  }
+  .calc-pad{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:8px;
+    margin-bottom:16px;
+  }
+  .calc-key{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:17px;
+    border:none;
+    border-radius:10px;
+    padding:14px 0;
+    background:rgba(26,26,26,.06);
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .calc-key:active{ background:rgba(26,26,26,.14); }
+  .calc-key.op{ background:var(--amber); color:var(--till-dark); }
+  .calc-key.op:active{ background:#d18f28; }
+  .calc-key.clear{ background:var(--red); color:var(--paper); }
+  .calc-key.equals{ background:var(--till); color:var(--paper); grid-row: span 2; height:100%; }
+  .calc-key.zero{ grid-column: span 2; }
+
+  .result{
+    border-top:1px dashed var(--line);
+    padding-top:14px;
+    margin-top:4px;
+  }
+  .result-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:14px;
+    padding:4px 0;
+    color:rgba(26,26,26,.7);
+  }
+  .change-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-top:8px;
+  }
+  .change-label{ font-family:'Archivo Black', sans-serif; font-size:15px;}
+  .change-value{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:32px;
+    color:var(--till);
+  }
+  .change-value.negative{ color:var(--red); }
+
+  .add-btn{
+    margin:16px 20px 0;
+    background:var(--amber);
+    color:var(--till-dark);
+    border:none;
+    border-radius:12px;
+    padding:16px;
+    font-family:'Archivo Black', sans-serif;
+    font-size:16px;
+    letter-spacing:.01em;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    transition:transform .08s ease;
+  }
+  .add-btn:active{ transform:scale(0.98); }
+  .add-btn:disabled{ opacity:.4; }
+  .add-btn.sending{ opacity:.7; }
+
+  .status{
+    text-align:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    padding:8px 20px 0;
+    min-height:18px;
+    color:rgba(26,26,26,.6);
+  }
+  .status.ok{ color:var(--till); }
+  .status.err{ color:var(--red); }
+
+  .history{
+    margin:18px 20px 0;
+    flex:1;
+    overflow-y:auto;
+  }
+  .history-title{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:rgba(26,26,26,.5);
+    border-bottom:1px dashed var(--line);
+    padding-bottom:8px;
+    margin-bottom:8px;
+  }
+  .h-item{
+    display:flex;
+    justify-content:space-between;
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    padding:7px 0;
+    border-bottom:1px dotted var(--line);
+  }
+  .h-item .t{ opacity:.45; font-size:11px; }
+  .h-empty{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    color:rgba(26,26,26,.4);
+    padding:12px 0;
+  }
+
+  .tear{
+    height:14px;
+    background:
+      linear-gradient(-45deg, var(--paper) 8px, transparent 0),
+      linear-gradient(45deg, var(--paper) 8px, transparent 0);
+    background-size: 16px 16px;
+    background-position: bottom;
+    background-repeat: repeat-x;
+    background-color: transparent;
+  }
+
+  footer{
+    padding:10px 20px 22px;
+    text-align:center;
+  }
+  .settings-link{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:rgba(250,246,236,.55);
+    background:none;
+    border:none;
+    text-decoration:underline;
+    cursor:pointer;
+  }
+
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,.5);
+    display:flex; align-items:flex-end; justify-content:center;
+    z-index:20;
+  }
+  .modal{
+    background:var(--paper); width:100%; max-width:480px;
+    border-radius:16px 16px 0 0; padding:22px 20px 26px;
+  }
+  .modal h3{ font-family:'Archivo Black', sans-serif; font-size:16px; margin:0 0 10px;}
+  .modal p{ font-family:'JetBrains Mono', monospace; font-size:12px; line-height:1.5; color:rgba(26,26,26,.65); margin:0 0 12px;}
+  .modal input{
+    width:100%; padding:12px; font-family:'JetBrains Mono', monospace; font-size:13px;
+    border:1.5px solid var(--ink); border-radius:8px; margin-bottom:12px;
+  }
+  .seller-bar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-top:14px;
+  }
+  .seller-chip{
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    font-weight:700;
+    background:rgba(250,246,236,.14);
+    color:var(--paper);
+    border:1.5px solid rgba(250,246,236,.4);
+    border-radius:20px;
+    padding:7px 14px;
+    cursor:pointer;
+    flex:1;
+    text-align:left;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .seller-chip .lbl{ opacity:.6; font-weight:400; margin-right:6px;}
+
+  .footer-links{
+    display:flex;
+    justify-content:center;
+    gap:18px;
+  }
+
+  .seller-list{ margin-bottom:14px; max-height:220px; overflow-y:auto; }
+  .seller-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 4px; border-bottom:1px dotted var(--line);
+    font-family:'JetBrains Mono', monospace; font-size:13px;
+  }
+  .seller-row.active{ font-weight:700; color:var(--till); }
+  .seller-row button.pick{ background:transparent; border:none; text-align:left; flex:1; font:inherit; color:inherit; cursor:pointer; }
+  .seller-row button.del{ background:none; border:none; color:var(--red); font-size:16px; cursor:pointer; padding:0 6px; }
+
+  .summary-filters{ display:flex; gap:8px; margin-bottom:14px; }
+  .summary-filters > div{ flex:1; }
+  .summary-filters label{ font-family:'JetBrains Mono', monospace; font-size:10px; text-transform:uppercase; opacity:.6; display:block; margin-bottom:4px;}
+  .summary-filters input, .summary-filters select{
+    width:100%; padding:9px; border:1.5px solid var(--ink); border-radius:8px; font-family:'JetBrains Mono', monospace; font-size:13px;
+  }
+  .summary-results{ max-height:240px; overflow-y:auto; margin-top:6px;}
+  .summary-row{
+    display:flex; justify-content:space-between; padding:9px 0;
+    border-bottom:1px dotted var(--line); font-family:'JetBrains Mono', monospace; font-size:13px;
+  }
+  .summary-row.total{ font-weight:700; border-bottom:none; border-top:1.5px solid var(--ink); margin-top:4px; padding-top:10px; }
+
+  .pie-wrap{
+    display:flex;
+    gap:16px;
+    align-items:flex-start;
+    margin-bottom:6px;
+  }
+  .pie-chart{
+    width:128px;
+    height:128px;
+    border-radius:50%;
+    flex-shrink:0;
+    box-shadow: inset 0 0 0 1.5px rgba(26,26,26,.15);
+  }
+  .pie-legend{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:9px;
+    max-height:220px;
+    overflow-y:auto;
+    padding-top:2px;
+  }
+  .legend-row{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+  }
+  .legend-dot{
+    width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:4px;
+  }
+  .legend-name{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:13px;
+  }
+  .legend-sub{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:rgba(26,26,26,.55);
+  }
+  .legend-row.total-row{
+    border-top:1.5px solid var(--ink);
+    padding-top:8px;
+    margin-top:2px;
+  }
+  .legend-row.total-row .legend-name{ font-size:13px; }
+
+  .modal-actions{ display:flex; gap:10px; }
+  .modal-actions button{
+    flex:1; padding:12px; border-radius:8px; border:none; font-family:'Space Grotesk'; font-weight:600; cursor:pointer;
+  }
+  .modal-save{ background:var(--till); color:var(--paper); }
+  .modal-cancel{ background:transparent; border:1.5px solid var(--ink) !important; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <header>
+    <div class="eyebrow">La Caja · Registro rápido</div>
+    <h1>Calculadora de cambio</h1>
+    <div class="seller-bar">
+      <button class="seller-chip" id="sellerChip"><span class="lbl">Vendedor:</span><span id="sellerName">—</span></button>
+    </div>
+  </header>
+
+  <div class="ticket">
+    <div class="screen">
+      <div class="field-label">Total a cobrar</div>
+      <div class="amount-row">
+        <span class="currency">$</span>
+        <div class="amount" id="total">0.00</div>
+      </div>
+      <div class="calc-subtotal" id="calcSubtotal">&nbsp;</div>
+
+      <div class="calc-pad" id="calcPad">
+        <button class="calc-key" data-d="7">7</button>
+        <button class="calc-key" data-d="8">8</button>
+        <button class="calc-key" data-d="9">9</button>
+        <button class="calc-key op" data-op="-">−</button>
+
+        <button class="calc-key" data-d="4">4</button>
+        <button class="calc-key" data-d="5">5</button>
+        <button class="calc-key" data-d="6">6</button>
+        <button class="calc-key op" data-op="+">+</button>
+
+        <button class="calc-key" data-d="1">1</button>
+        <button class="calc-key" data-d="2">2</button>
+        <button class="calc-key" data-d="3">3</button>
+        <button class="calc-key equals" id="calcEquals">=</button>
+
+        <button class="calc-key zero" data-d="0">0</button>
+        <button class="calc-key" data-d=".">.</button>
+        <button class="calc-key clear" id="calcClear">C</button>
+      </div>
+
+      <div class="field-label">Pagó con</div>
+      <div class="amount-row">
+        <span class="currency">$</span>
+        <input class="amount" id="paidWith" type="number" inputmode="decimal" placeholder="0.00" />
+      </div>
+      <div class="quick-bills" id="quickBills"></div>
+
+      <div class="result">
+        <div class="change-row">
+          <span class="change-label">Cambio a devolver</span>
+          <span class="change-value" id="changeValue">$0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <button class="add-btn" id="addBtn">✓ &nbsp; Agregar venta</button>
+    <div class="status" id="status"></div>
+
+    <div class="history" id="history">
+      <div class="history-title">Ventas de hoy</div>
+      <div id="historyList"><div class="h-empty">Aún no hay ventas registradas.</div></div>
+    </div>
+
+    <div class="tear"></div>
+  </div>
+
+  <footer>
+    <div class="footer-links">
+      <button class="settings-link" id="summaryBtn">Resumen por vendedor</button>
+      <button class="settings-link" id="settingsBtn">Enlace a Sheets</button>
+    </div>
+  </footer>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop" style="display:none;">
+  <div class="modal">
+    <h3>Enlace de Google Apps Script</h3>
+    <p>Pega aquí la URL que te dio Google Apps Script al publicar el proyecto como aplicación web. Solo se hace una vez.</p>
+    <input type="text" id="webhookInput" placeholder="https://script.google.com/macros/s/XXXX/exec" />
+    <div class="modal-actions">
+      <button class="modal-cancel" id="modalCancel">Cancelar</button>
+      <button class="modal-save" id="modalSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="sellerModalBackdrop" style="display:none;">
+  <div class="modal">
+    <h3>Vendedores</h3>
+    <p>Elige quién está cobrando ahora, o agrega un nuevo vendedor.</p>
+    <div class="seller-list" id="sellerListEl"></div>
+    <input type="text" id="newSellerInput" placeholder="Nombre del nuevo vendedor" />
+    <div class="modal-actions">
+      <button class="modal-cancel" id="sellerModalClose">Cerrar</button>
+      <button class="modal-save" id="newSellerSave">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="summaryModalBackdrop" style="display:none;">
+  <div class="modal">
+    <h3>Resumen por vendedor</h3>
+    <p id="summarySyncNote">Filtra por vendedor, fecha y rango de hora.</p>
+    <div class="summary-filters">
+      <div>
+        <label>Vendedor</label>
+        <select id="summarySeller"><option value="__all__">Todos</option></select>
+      </div>
+      <div>
+        <label>Fecha</label>
+        <input type="date" id="summaryDate" />
+      </div>
+    </div>
+    <div class="summary-filters">
+      <div>
+        <label>Desde</label>
+        <input type="time" id="summaryFrom" />
+      </div>
+      <div>
+        <label>Hasta</label>
+        <input type="time" id="summaryTo" />
+      </div>
+    </div>
+    <div class="pie-wrap" id="pieWrap" style="display:none;">
+      <div class="pie-chart" id="pieChart"></div>
+      <div class="pie-legend" id="pieLegend"></div>
+    </div>
+    <div class="summary-results" id="summaryResults"></div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="modal-cancel" id="summaryClose">Cerrar</button>
+      <button class="modal-save" id="summaryCalc">Calcular</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const totalEl = document.getElementById('total');
+  const paidEl = document.getElementById('paidWith');
+  const changeEl = document.getElementById('changeValue');
+  const addBtn = document.getElementById('addBtn');
+  const statusEl = document.getElementById('status');
+  const historyList = document.getElementById('historyList');
+  const quickBills = document.getElementById('quickBills');
+
+  const BILLS = [20, 50, 100, 200, 500, 1000];
+  BILLS.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'bill-btn';
+    btn.textContent = '$' + b;
+    btn.onclick = () => { paidEl.value = b; calcChange(); };
+    quickBills.appendChild(btn);
+  });
+
+  let sales = []; // historial en memoria (de la sesión)
+
+  // --- Calculadora (suma/resta) para el Total a cobrar ---
+  const calcSubtotal = document.getElementById('calcSubtotal');
+  let calcAccum = null;
+  let calcOp = null;
+  let calcNewEntry = true;
+
+  function updateSubtotalLabel(){
+    if(calcOp && calcAccum !== null){
+      calcSubtotal.textContent = '$' + (calcAccum / 100).toFixed(2) + ' ' + (calcOp === '+' ? '+' : '−');
+    } else {
+      calcSubtotal.innerHTML = '&nbsp;';
+    }
+  }
+
+  function pressDigit(d){
+    if(calcNewEntry){
+      totalEl.textContent = (d === '.') ? '0.' : d;
+      calcNewEntry = false;
+    } else {
+      if(d === '.' && totalEl.textContent.includes('.')) return;
+      totalEl.textContent += d;
+    }
+    calcChange();
+  }
+
+  function toCents(v){ return Math.round((parseFloat(v) || 0) * 100); }
+
+  function pressOp(op){
+    const current = toCents(totalEl.textContent);
+    if(calcAccum === null){
+      calcAccum = current;
+    } else if(!calcNewEntry){
+      calcAccum = (calcOp === '+') ? calcAccum + current : calcAccum - current;
+    }
+    calcOp = op;
+    calcNewEntry = true;
+    totalEl.textContent = (calcAccum / 100).toFixed(2);
+    updateSubtotalLabel();
+    calcChange();
+  }
+
+  function pressEquals(){
+    if(calcOp){
+      const current = toCents(totalEl.textContent);
+      if(!calcNewEntry){
+        calcAccum = (calcOp === '+') ? calcAccum + current : calcAccum - current;
+      }
+      totalEl.textContent = (calcAccum / 100).toFixed(2);
+    }
+    calcOp = null;
+    calcAccum = null;
+    calcNewEntry = true;
+    updateSubtotalLabel();
+    calcChange();
+  }
+
+  function pressClear(){
+    totalEl.textContent = '0.00';
+    calcAccum = null;
+    calcOp = null;
+    calcNewEntry = true;
+    updateSubtotalLabel();
+    calcChange();
+  }
+
+  document.getElementById('calcPad').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    if(btn.dataset.d !== undefined) pressDigit(btn.dataset.d);
+    else if(btn.dataset.op !== undefined) pressOp(btn.dataset.op);
+  });
+  document.getElementById('calcEquals').addEventListener('click', pressEquals);
+  document.getElementById('calcClear').addEventListener('click', pressClear);
+
+  function calcChange(){
+    const totalCents = toCents(totalEl.textContent);
+    const paidCents = toCents(paidEl.value);
+    const changeCents = paidCents - totalCents;
+    changeEl.textContent = '$' + (Math.max(changeCents, 0) / 100).toFixed(2);
+    changeEl.classList.toggle('negative', changeCents < 0);
+    return { total: totalCents / 100, paid: paidCents / 100, change: changeCents / 100, changeCents };
+  }
+  paidEl.addEventListener('input', calcChange);
+
+  function renderHistory(){
+    if(sales.length === 0){
+      historyList.innerHTML = '<div class="h-empty">Aún no hay ventas registradas.</div>';
+      return;
+    }
+    historyList.innerHTML = sales.slice().reverse().map(s => `
+      <div class="h-item">
+        <span>${s.vendedor} · Total $${s.total.toFixed(2)} · Pagó $${s.paid.toFixed(2)}</span>
+        <span class="t">${s.time}</span>
+      </div>
+    `).join('');
+  }
+
+  function getWebhook(){ return localStorage.getItem('sheetsWebhook') || ''; }
+
+  addBtn.addEventListener('click', async () => {
+    const { total, paid, changeCents } = calcChange();
+    if(total <= 0){ setStatus('Escribe el total de la venta.', 'err'); return; }
+    if(changeCents < 0){ setStatus('Lo que pagó es menor al total.', 'err'); return; }
+    const change = Math.max(changeCents, 0) / 100;
+
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,'0');
+    const mm = String(now.getMinutes()).padStart(2,'0');
+    const record = {
+      total, paid, change,
+      vendedor: currentSeller,
+      time: now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'}),
+      hour24: hh + ':' + mm,
+      fecha: now.toLocaleDateString('es-MX'),
+      timestamp: now.toISOString()
+    };
+
+    sales.push(record);
+    renderHistory();
+
+    const webhook = getWebhook();
+    if(!webhook){
+      setStatus('Venta guardada localmente. Configura el enlace a Sheets para sincronizar.', 'ok');
+      resetInputs();
+      return;
+    }
+
+    addBtn.disabled = true;
+    addBtn.classList.add('sending');
+    setStatus('Enviando a Google Sheets…', '');
+
+    try {
+      const resp = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(record)
+      });
+      if(!resp.ok) throw new Error('bad response');
+      setStatus('✓ Venta agregada a Google Sheets.', 'ok');
+    } catch(err){
+      setStatus('No se pudo confirmar el envío, pero se guardó localmente.', 'err');
+    } finally {
+      addBtn.disabled = false;
+      addBtn.classList.remove('sending');
+      resetInputs();
+    }
+  });
+
+  function resetInputs(){
+    totalEl.textContent = '0.00';
+    paidEl.value = '';
+    calcAccum = null;
+    calcOp = null;
+    calcNewEntry = true;
+    updateSubtotalLabel();
+    calcChange();
+  }
+
+  function setStatus(msg, type){
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (type ? ' ' + type : '');
+    setTimeout(() => { if(statusEl.textContent === msg) statusEl.textContent=''; }, 4000);
+  }
+
+  // Configuración del webhook
+  const settingsBtn = document.getElementById('settingsBtn');
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const webhookInput = document.getElementById('webhookInput');
+  settingsBtn.onclick = () => {
+    webhookInput.value = getWebhook();
+    modalBackdrop.style.display = 'flex';
+  };
+  document.getElementById('modalCancel').onclick = () => modalBackdrop.style.display='none';
+  document.getElementById('modalSave').onclick = () => {
+    localStorage.setItem('sheetsWebhook', webhookInput.value.trim());
+    modalBackdrop.style.display='none';
+    setStatus('Enlace guardado.', 'ok');
+  };
+
+  // --- Vendedores ---
+  const sellerChip = document.getElementById('sellerChip');
+  const sellerName = document.getElementById('sellerName');
+  const sellerModalBackdrop = document.getElementById('sellerModalBackdrop');
+  const sellerListEl = document.getElementById('sellerListEl');
+  const newSellerInput = document.getElementById('newSellerInput');
+
+  function loadSellers(){
+    try { return JSON.parse(localStorage.getItem('sellers')) || []; }
+    catch(e){ return []; }
+  }
+  function saveSellers(list){ localStorage.setItem('sellers', JSON.stringify(list)); }
+
+  let sellers = loadSellers();
+  if(sellers.length === 0){ sellers = ['Vendedor 1']; saveSellers(sellers); }
+  let currentSeller = localStorage.getItem('currentSeller') || sellers[0];
+  if(!sellers.includes(currentSeller)) currentSeller = sellers[0];
+
+  function renderSellerChip(){ sellerName.textContent = currentSeller; }
+
+  function renderSellerList(){
+    sellerListEl.innerHTML = sellers.map(s => `
+      <div class="seller-row ${s === currentSeller ? 'active' : ''}">
+        <button class="pick" data-name="${s}">${s === currentSeller ? '● ' : ''}${s}</button>
+        ${sellers.length > 1 ? `<button class="del" data-del="${s}">✕</button>` : ''}
+      </div>
+    `).join('');
+  }
+
+  sellerChip.onclick = () => { renderSellerList(); sellerModalBackdrop.style.display = 'flex'; };
+  document.getElementById('sellerModalClose').onclick = () => sellerModalBackdrop.style.display = 'none';
+
+  sellerListEl.addEventListener('click', (e) => {
+    const pick = e.target.closest('button.pick');
+    const del = e.target.closest('button.del');
+    if(pick){
+      currentSeller = pick.dataset.name;
+      localStorage.setItem('currentSeller', currentSeller);
+      renderSellerChip();
+      renderSellerList();
+    } else if(del){
+      sellers = sellers.filter(s => s !== del.dataset.del);
+      saveSellers(sellers);
+      if(currentSeller === del.dataset.del){
+        currentSeller = sellers[0];
+        localStorage.setItem('currentSeller', currentSeller);
+        renderSellerChip();
+      }
+      renderSellerList();
+    }
+  });
+
+  document.getElementById('newSellerSave').onclick = () => {
+    const name = newSellerInput.value.trim();
+    if(!name) return;
+    if(!sellers.includes(name)) sellers.push(name);
+    saveSellers(sellers);
+    currentSeller = name;
+    localStorage.setItem('currentSeller', currentSeller);
+    newSellerInput.value = '';
+    renderSellerChip();
+    renderSellerList();
+  };
+
+  renderSellerChip();
+
+  // --- Resumen por vendedor (combina sesión actual + historial de Sheets) ---
+  const summaryModalBackdrop = document.getElementById('summaryModalBackdrop');
+  const summarySeller = document.getElementById('summarySeller');
+  const summaryResults = document.getElementById('summaryResults');
+  const summarySyncNote = document.getElementById('summarySyncNote');
+  const summaryDateInput = document.getElementById('summaryDate');
+
+  function todayISO(){
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function deriveFields(ts){
+    const d = new Date(ts);
+    return {
+      dateStr: d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'),
+      hour24: String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0')
+    };
+  }
+
+  async function fetchRemoteSales(){
+    const webhook = getWebhook();
+    if(!webhook) return null;
+    try{
+      const resp = await fetch(webhook, { method: 'GET' });
+      if(!resp.ok) throw new Error('bad response');
+      return await resp.json();
+    } catch(err){
+      return null;
+    }
+  }
+
+  document.getElementById('summaryBtn').onclick = () => {
+    summarySeller.innerHTML = '<option value="__all__">Todos</option>' +
+      sellers.map(s => `<option value="${s}">${s}</option>`).join('');
+    if(!summaryDateInput.value) summaryDateInput.value = todayISO();
+    summaryResults.innerHTML = '';
+    document.getElementById('pieWrap').style.display = 'none';
+    summarySyncNote.textContent = 'Filtra por vendedor, fecha y rango de hora.';
+    summaryModalBackdrop.style.display = 'flex';
+  };
+  document.getElementById('summaryClose').onclick = () => summaryModalBackdrop.style.display = 'none';
+
+  const pieWrap = document.getElementById('pieWrap');
+  const pieChart = document.getElementById('pieChart');
+  const pieLegend = document.getElementById('pieLegend');
+  const PALETTE = ['#0B3D2E', '#E8A33D', '#C1443C', '#3D6B8F', '#8B5FBF', '#4C9A76', '#B5651D', '#6B4A8A'];
+
+  function fmtHM(ts){
+    const d = new Date(ts);
+    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+
+  function renderSummary(filtered){
+    if(filtered.length === 0){
+      pieWrap.style.display = 'none';
+      summaryResults.innerHTML = '<div class="h-empty">No hay ventas en ese rango.</div>';
+      return;
+    }
+    summaryResults.innerHTML = '';
+    pieWrap.style.display = 'flex';
+
+    // Agrupa por vendedor: total, nº de ventas, primera y última venta (inicio/fin de turno)
+    const groups = {};
+    filtered.forEach(s => {
+      if(!groups[s.vendedor]){
+        groups[s.vendedor] = { total: 0, count: 0, first: s.timestamp, last: s.timestamp };
+      }
+      const g = groups[s.vendedor];
+      g.total += s.total;
+      g.count += 1;
+      if(new Date(s.timestamp) < new Date(g.first)) g.first = s.timestamp;
+      if(new Date(s.timestamp) > new Date(g.last)) g.last = s.timestamp;
+    });
+
+    const names = Object.keys(groups).sort((a, b) => groups[b].total - groups[a].total);
+    const grand = filtered.reduce((sum, s) => sum + s.total, 0);
+
+    let cumulative = 0;
+    const slices = [];
+    names.forEach((name, i) => {
+      const pct = grand > 0 ? (groups[name].total / grand * 100) : 0;
+      const color = PALETTE[i % PALETTE.length];
+      slices.push(`${color} ${cumulative}% ${cumulative + pct}%`);
+      cumulative += pct;
+    });
+    pieChart.style.background = `conic-gradient(${slices.join(', ')})`;
+
+    pieLegend.innerHTML = names.map((name, i) => {
+      const g = groups[name];
+      const color = PALETTE[i % PALETTE.length];
+      return `
+        <div class="legend-row">
+          <span class="legend-dot" style="background:${color}"></span>
+          <div>
+            <div class="legend-name">${name} · $${g.total.toFixed(2)}</div>
+            <div class="legend-sub">${g.count} venta${g.count===1?'':'s'} · turno ${fmtHM(g.first)}–${fmtHM(g.last)}</div>
+          </div>
+        </div>`;
+    }).join('') + `
+      <div class="legend-row total-row">
+        <div class="legend-name">Total: $${grand.toFixed(2)} (${filtered.length} ventas)</div>
+      </div>`;
+  }
+
+  document.getElementById('summaryCalc').onclick = async () => {
+    const who = summarySeller.value;
+    const dateFilter = summaryDateInput.value; // "YYYY-MM-DD" o ""
+    const from = document.getElementById('summaryFrom').value; // "HH:MM" o ""
+    const to = document.getElementById('summaryTo').value;
+
+    pieWrap.style.display = 'none';
+    summaryResults.innerHTML = '<div class="h-empty">Buscando…</div>';
+
+    // Ventas de esta sesión (siempre disponibles, aunque no haya internet)
+    let combined = sales.map(s => ({ ...s, ...deriveFields(s.timestamp) }));
+
+    const webhook = getWebhook();
+    if(webhook){
+      const remote = await fetchRemoteSales();
+      if(remote){
+        const seen = new Set(combined.map(c => c.timestamp));
+        remote.forEach(r => {
+          if(r.timestamp && !seen.has(r.timestamp)){
+            combined.push({ ...r, total: Number(r.total) || 0, ...deriveFields(r.timestamp) });
+          }
+        });
+        summarySyncNote.textContent = '✓ Sincronizado con Google Sheets (historial completo).';
+      } else {
+        summarySyncNote.textContent = 'No se pudo conectar con Sheets; mostrando solo esta sesión.';
+      }
+    } else {
+      summarySyncNote.textContent = 'Sin enlace a Sheets configurado; mostrando solo esta sesión.';
+    }
+
+    const filtered = combined.filter(s => {
+      if(who !== '__all__' && s.vendedor !== who) return false;
+      if(dateFilter && s.dateStr !== dateFilter) return false;
+      if(from && s.hour24 < from) return false;
+      if(to && s.hour24 > to) return false;
+      return true;
+    });
+
+    renderSummary(filtered);
+  };
+
+  renderHistory();
+</script>
+</body>
+</html>
