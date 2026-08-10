@@ -699,7 +699,8 @@ function doGet(e) {
     `).join('');
   }
 
-  function getWebhook(){ return localStorage.getItem('sheetsWebhook') || ''; }
+  const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwf-iHypUWD7_1mWKHSLnXi-pO_3xVUuXF10fiRHPh7-h_rkb6-kdcgIsr5EynPJkYgfw/exec';
+  function getWebhook(){ return localStorage.getItem('sheetsWebhook') || DEFAULT_WEBHOOK; }
 
   addBtn.addEventListener('click', async () => {
     const { total, paid, changeCents } = calcChange();
