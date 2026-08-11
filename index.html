@@ -10,16 +10,18 @@
   :root{
     --paper:#FAF6EC;
     --ink:#1A1A1A;
-    --till:#0B3D2E;
-    --till-dark:#082B21;
+    --till:#123C61;
+    --till-dark:#0A2540;
     --amber:#E8A33D;
     --red:#C1443C;
     --line: rgba(26,26,26,0.12);
+    --till-grad: linear-gradient(180deg, #123C61 0%, #123C61 26%, #7A2A38 60%, #9C6A18 100%);
+    --till-dark-grad: linear-gradient(180deg, #0A2540 0%, #0A2540 26%, #4E1B26 60%, #5C4012 100%);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
   body{
-    background:var(--till-dark);
+    background:var(--till-dark-grad);
     font-family:'Space Grotesk', sans-serif;
     color:var(--ink);
     min-height:100vh;
@@ -31,7 +33,7 @@
     width:100%;
     max-width:480px;
     min-height:100vh;
-    background:var(--till);
+    background:var(--till-grad);
     display:flex;
     flex-direction:column;
   }
@@ -279,6 +281,22 @@
     width:100%; padding:12px; font-family:'JetBrains Mono', monospace; font-size:13px;
     border:1.5px solid var(--ink); border-radius:8px; margin-bottom:12px;
   }
+  .test-btn{
+    width:100%; padding:11px; margin-bottom:10px;
+    font-family:'JetBrains Mono', monospace; font-weight:700; font-size:12px;
+    background:transparent; border:1.5px dashed var(--ink); border-radius:8px; cursor:pointer;
+  }
+  .test-btn:active{ background:rgba(26,26,26,.06); }
+  #webhookTestStatus{ padding:0; margin-bottom:10px; text-align:left; }
+  .webhook-help{
+    margin-bottom:14px; font-family:'JetBrains Mono', monospace; font-size:12px;
+  }
+  .webhook-help summary{ cursor:pointer; color:var(--till); font-weight:700; }
+  .webhook-help ol{ padding-left:18px; margin:10px 0; line-height:1.6; color:rgba(26,26,26,.75); }
+  .webhook-help pre{
+    background:rgba(26,26,26,.06); border-radius:8px; padding:10px;
+    font-size:10.5px; line-height:1.5; overflow-x:auto; white-space:pre; margin:8px 0 0;
+  }
   .seller-bar{
     display:flex;
     align-items:center;
@@ -430,7 +448,7 @@
       <div class="field-label">Pagó con</div>
       <div class="amount-row">
         <span class="currency">$</span>
-        <input class="amount" id="paidWith" type="number" inputmode="decimal" placeholder="0.00" />
+        <input class="amount" id="paidWith" type="text" inputmode="decimal" placeholder="0.00" />
       </div>
       <div class="quick-bills" id="quickBills"></div>
 
@@ -466,6 +484,39 @@
     <h3>Enlace de Google Apps Script</h3>
     <p>Pega aquí la URL que te dio Google Apps Script al publicar el proyecto como aplicación web. Solo se hace una vez.</p>
     <input type="text" id="webhookInput" placeholder="https://script.google.com/macros/s/XXXX/exec" />
+    <button class="test-btn" id="testWebhookBtn">Probar conexión</button>
+    <div class="status" id="webhookTestStatus"></div>
+    <details class="webhook-help">
+      <summary>¿No conecta? Cómo configurar el script</summary>
+      <ol>
+        <li>En tu hoja de Sheets: Extensiones → Apps Script, y pega el código de abajo.</li>
+        <li>Implementar → Nueva implementación → tipo "Aplicación web".</li>
+        <li>"Ejecutar como": Yo. "Quién tiene acceso": Cualquier usuario.</li>
+        <li>Copia la URL que termina en <b>/exec</b> (no la de /dev) y pégala arriba.</li>
+        <li>Si vuelves a editar el código, debes crear una <b>nueva versión</b> en Gestionar implementaciones — si no, la URL sigue usando el código viejo.</li>
+      </ol>
+      <pre><code>function doPost(e) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName('Ventas') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('Ventas');
+  const d = JSON.parse(e.postData.contents);
+  sh.appendRow([d.timestamp, d.fecha, d.hour24, d.vendedor, d.total, d.paid, d.change]);
+  return ContentService.createTextOutput(JSON.stringify({ok:true}))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Ventas');
+  if (!sh) return ContentService.createTextOutput('[]')
+    .setMimeType(ContentService.MimeType.JSON);
+  const rows = sh.getDataRange().getValues().slice(1);
+  const sales = rows.map(r => ({
+    timestamp:r[0], fecha:r[1], hour24:r[2], vendedor:r[3],
+    total:r[4], paid:r[5], change:r[6]
+  }));
+  return ContentService.createTextOutput(JSON.stringify(sales))
+    .setMimeType(ContentService.MimeType.JSON);
+}</code></pre>
+    </details>
     <div class="modal-actions">
       <button class="modal-cancel" id="modalCancel">Cancelar</button>
       <button class="modal-save" id="modalSave">Guardar</button>
@@ -540,7 +591,16 @@
     quickBills.appendChild(btn);
   });
 
-  let sales = []; // historial en memoria (de la sesión)
+  function loadSales(){
+    try {
+      const stored = JSON.parse(localStorage.getItem('salesHistory')) || [];
+      const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000; // conserva 60 días
+      return stored.filter(s => new Date(s.timestamp).getTime() >= cutoff);
+    } catch(e){ return []; }
+  }
+  function saveSalesLocal(){ localStorage.setItem('salesHistory', JSON.stringify(sales)); }
+
+  let sales = loadSales(); // historial persistido en este dispositivo (localStorage)
 
   // --- Calculadora (suma/resta) para el Total a cobrar ---
   const calcSubtotal = document.getElementById('calcSubtotal');
@@ -624,14 +684,22 @@
     changeEl.classList.toggle('negative', changeCents < 0);
     return { total: totalCents / 100, paid: paidCents / 100, change: changeCents / 100, changeCents };
   }
-  paidEl.addEventListener('input', calcChange);
+  paidEl.addEventListener('input', () => {
+    let v = paidEl.value.replace(',', '.').replace(/[^0-9.]/g, '');
+    const firstDot = v.indexOf('.');
+    if(firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+    paidEl.value = v;
+    calcChange();
+  });
 
   function renderHistory(){
-    if(sales.length === 0){
+    const today = todayISO();
+    const todaysSales = sales.filter(s => (s.timestamp || '').slice(0, 10) === today);
+    if(todaysSales.length === 0){
       historyList.innerHTML = '<div class="h-empty">Aún no hay ventas registradas.</div>';
       return;
     }
-    historyList.innerHTML = sales.slice().reverse().map(s => `
+    historyList.innerHTML = todaysSales.slice().reverse().map(s => `
       <div class="h-item">
         <span>${s.vendedor} · Total $${s.total.toFixed(2)} · Pagó $${s.paid.toFixed(2)}</span>
         <span class="t">${s.time}</span>
@@ -639,7 +707,8 @@
     `).join('');
   }
 
-  function getWebhook(){ return localStorage.getItem('sheetsWebhook') || ''; }
+  const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwf-iHypUWD7_1mWKHSLnXi-pO_3xVUuXF10fiRHPh7-h_rkb6-kdcgIsr5EynPJkYgfw/exec';
+  function getWebhook(){ return localStorage.getItem('sheetsWebhook') || DEFAULT_WEBHOOK; }
 
   addBtn.addEventListener('click', async () => {
     const { total, paid, changeCents } = calcChange();
@@ -660,6 +729,7 @@
     };
 
     sales.push(record);
+    saveSalesLocal();
     renderHistory();
 
     const webhook = getWebhook();
@@ -682,7 +752,7 @@
       if(!resp.ok) throw new Error('bad response');
       setStatus('✓ Venta agregada a Google Sheets.', 'ok');
     } catch(err){
-      setStatus('No se pudo confirmar el envío, pero se guardó localmente.', 'err');
+      setStatus('No se pudo confirmar el envío, pero se guardó localmente. Usa "Probar conexión" en Ajustes para revisar el enlace.', 'err');
     } finally {
       addBtn.disabled = false;
       addBtn.classList.remove('sending');
@@ -710,8 +780,11 @@
   const settingsBtn = document.getElementById('settingsBtn');
   const modalBackdrop = document.getElementById('modalBackdrop');
   const webhookInput = document.getElementById('webhookInput');
+  const webhookTestStatus = document.getElementById('webhookTestStatus');
   settingsBtn.onclick = () => {
     webhookInput.value = getWebhook();
+    webhookTestStatus.textContent = '';
+    webhookTestStatus.className = 'status';
     modalBackdrop.style.display = 'flex';
   };
   document.getElementById('modalCancel').onclick = () => modalBackdrop.style.display='none';
@@ -719,6 +792,42 @@
     localStorage.setItem('sheetsWebhook', webhookInput.value.trim());
     modalBackdrop.style.display='none';
     setStatus('Enlace guardado.', 'ok');
+  };
+
+  document.getElementById('testWebhookBtn').onclick = async () => {
+    const url = webhookInput.value.trim();
+    if(!url){
+      webhookTestStatus.textContent = 'Escribe primero la URL del script.';
+      webhookTestStatus.className = 'status err';
+      return;
+    }
+    webhookTestStatus.textContent = 'Probando conexión…';
+    webhookTestStatus.className = 'status';
+    try {
+      const resp = await fetch(url, { method: 'GET' });
+      if(!resp.ok){
+        webhookTestStatus.textContent = `El servidor respondió con error ${resp.status}. Revisa que la implementación tenga acceso "Cualquier usuario".`;
+        webhookTestStatus.className = 'status err';
+        return;
+      }
+      let data;
+      try { data = await resp.json(); }
+      catch(e){
+        webhookTestStatus.textContent = 'Respondió, pero no en formato JSON. Revisa que tu función doGet() exista y devuelva JSON.';
+        webhookTestStatus.className = 'status err';
+        return;
+      }
+      if(Array.isArray(data)){
+        webhookTestStatus.textContent = `✓ Conectado. ${data.length} venta(s) encontradas en la hoja.`;
+        webhookTestStatus.className = 'status ok';
+      } else {
+        webhookTestStatus.textContent = '✓ El servidor respondió, pero no devolvió una lista de ventas. Revisa tu función doGet().';
+        webhookTestStatus.className = 'status ok';
+      }
+    } catch(err){
+      webhookTestStatus.textContent = 'No se pudo conectar (URL incorrecta, script sin publicar, o falta doGet). Usa la URL que termina en /exec.';
+      webhookTestStatus.className = 'status err';
+    }
   };
 
   // --- Vendedores ---
@@ -832,7 +941,7 @@
   const pieWrap = document.getElementById('pieWrap');
   const pieChart = document.getElementById('pieChart');
   const pieLegend = document.getElementById('pieLegend');
-  const PALETTE = ['#0B3D2E', '#E8A33D', '#C1443C', '#3D6B8F', '#8B5FBF', '#4C9A76', '#B5651D', '#6B4A8A'];
+  const PALETTE = ['#123C61', '#E8A33D', '#C1443C', '#3D8FB5', '#8B5FBF', '#4C9A76', '#B5651D', '#6B4A8A'];
 
   function fmtHM(ts){
     const d = new Date(ts);
@@ -900,7 +1009,7 @@
     pieWrap.style.display = 'none';
     summaryResults.innerHTML = '<div class="h-empty">Buscando…</div>';
 
-    // Ventas de esta sesión (siempre disponibles, aunque no haya internet)
+    // Ventas guardadas en este dispositivo (siempre disponibles, aunque no haya internet)
     let combined = sales.map(s => ({ ...s, ...deriveFields(s.timestamp) }));
 
     const webhook = getWebhook();
