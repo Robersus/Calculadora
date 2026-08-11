@@ -540,7 +540,24 @@
     quickBills.appendChild(btn);
   });
 
-  let sales = []; // historial en memoria (de la sesión)
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, ch => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[ch]));
+  }
+
+  function loadSales(){
+    try { return JSON.parse(localStorage.getItem('sales')) || []; }
+    catch(e){ return []; }
+  }
+  function saveSales(){ localStorage.setItem('sales', JSON.stringify(sales)); }
+  function isToday(ts){
+    const d = new Date(ts);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+
+  let sales = loadSales(); // historial persistido en localStorage
 
   // --- Calculadora (suma/resta) para el Total a cobrar ---
   const calcSubtotal = document.getElementById('calcSubtotal');
@@ -627,14 +644,15 @@
   paidEl.addEventListener('input', calcChange);
 
   function renderHistory(){
-    if(sales.length === 0){
+    const todaySales = sales.filter(s => isToday(s.timestamp));
+    if(todaySales.length === 0){
       historyList.innerHTML = '<div class="h-empty">Aún no hay ventas registradas.</div>';
       return;
     }
-    historyList.innerHTML = sales.slice().reverse().map(s => `
+    historyList.innerHTML = todaySales.slice().reverse().map(s => `
       <div class="h-item">
-        <span>${s.vendedor} · Total $${s.total.toFixed(2)} · Pagó $${s.paid.toFixed(2)}</span>
-        <span class="t">${s.time}</span>
+        <span>${escapeHtml(s.vendedor)} · Total $${s.total.toFixed(2)} · Pagó $${s.paid.toFixed(2)}</span>
+        <span class="t">${escapeHtml(s.time)}</span>
       </div>
     `).join('');
   }
@@ -660,6 +678,7 @@
     };
 
     sales.push(record);
+    saveSales();
     renderHistory();
 
     const webhook = getWebhook();
@@ -744,8 +763,8 @@
   function renderSellerList(){
     sellerListEl.innerHTML = sellers.map(s => `
       <div class="seller-row ${s === currentSeller ? 'active' : ''}">
-        <button class="pick" data-name="${s}">${s === currentSeller ? '● ' : ''}${s}</button>
-        ${sellers.length > 1 ? `<button class="del" data-del="${s}">✕</button>` : ''}
+        <button class="pick" data-name="${escapeHtml(s)}">${s === currentSeller ? '● ' : ''}${escapeHtml(s)}</button>
+        ${sellers.length > 1 ? `<button class="del" data-del="${escapeHtml(s)}">✕</button>` : ''}
       </div>
     `).join('');
   }
@@ -820,7 +839,7 @@
 
   document.getElementById('summaryBtn').onclick = () => {
     summarySeller.innerHTML = '<option value="__all__">Todos</option>' +
-      sellers.map(s => `<option value="${s}">${s}</option>`).join('');
+      sellers.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
     if(!summaryDateInput.value) summaryDateInput.value = todayISO();
     summaryResults.innerHTML = '';
     document.getElementById('pieWrap').style.display = 'none';
@@ -881,7 +900,7 @@
         <div class="legend-row">
           <span class="legend-dot" style="background:${color}"></span>
           <div>
-            <div class="legend-name">${name} · $${g.total.toFixed(2)}</div>
+            <div class="legend-name">${escapeHtml(name)} · $${g.total.toFixed(2)}</div>
             <div class="legend-sub">${g.count} venta${g.count===1?'':'s'} · turno ${fmtHM(g.first)}–${fmtHM(g.last)}</div>
           </div>
         </div>`;
