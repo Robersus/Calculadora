@@ -235,6 +235,7 @@
   }
   .h-item .t{ opacity:.45; font-size:11px; }
   #historyList{ max-height:260px; overflow-y:auto; }
+  #egresoListEl{ max-height:180px; overflow-y:auto; margin-top:14px; }
   .history-more{
     display:block; width:100%; margin-top:10px; padding:10px;
     font-family:'JetBrains Mono', monospace; font-weight:700; font-size:12px;
@@ -272,6 +273,12 @@
     border:none;
     text-decoration:underline;
     cursor:pointer;
+  }
+  .danger-link{
+    display:block;
+    margin:12px auto 0;
+    color:rgba(255,214,207,.8);
+    font-weight:700;
   }
 
   .modal-backdrop{
@@ -484,8 +491,10 @@
   <footer>
     <div class="footer-links">
       <button class="settings-link" id="summaryBtn">Resumen por vendedor</button>
+      <button class="settings-link" id="egresoBtn">Registrar egreso</button>
       <button class="settings-link" id="settingsBtn">Enlace a Sheets</button>
     </div>
+    <button class="settings-link danger-link" id="resetBtn">Reiniciar ventas y egresos</button>
   </footer>
 </div>
 
@@ -504,12 +513,18 @@
         <li>"Ejecutar como": Yo. "Quién tiene acceso": Cualquier usuario.</li>
         <li>Copia la URL que termina en <b>/exec</b> (no la de /dev) y pégala arriba.</li>
         <li>Si vuelves a editar el código, debes crear una <b>nueva versión</b> en Gestionar implementaciones — si no, la URL sigue usando el código viejo.</li>
+        <li>Los egresos se guardan en su propia pestaña "Egresos" de la misma hoja.</li>
       </ol>
       <pre><code>function doPost(e) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName('Ventas') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('Ventas');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const d = JSON.parse(e.postData.contents);
-  sh.appendRow([d.timestamp, d.fecha, d.hour24, d.vendedor, d.total, d.paid, d.change]);
+  if (d.tipo === 'egreso') {
+    const sh = ss.getSheetByName('Egresos') || ss.insertSheet('Egresos');
+    sh.appendRow([d.timestamp, d.fecha, d.vendedor, d.monto, d.concepto]);
+  } else {
+    const sh = ss.getSheetByName('Ventas') || ss.insertSheet('Ventas');
+    sh.appendRow([d.timestamp, d.fecha, d.hour24, d.vendedor, d.total, d.paid, d.change]);
+  }
   return ContentService.createTextOutput(JSON.stringify({ok:true}))
     .setMimeType(ContentService.MimeType.JSON);
 }
@@ -583,6 +598,37 @@ function doGet(e) {
   </div>
 </div>
 
+<div class="modal-backdrop" id="egresoModalBackdrop" style="display:none;">
+  <div class="modal">
+    <h3>Registrar egreso</h3>
+    <p>Anota un gasto o salida de dinero de la caja (compras, pagos, etc.).</p>
+    <div class="field-label">Monto</div>
+    <div class="amount-row">
+      <span class="currency">$</span>
+      <input class="amount" id="egresoMonto" type="text" inputmode="decimal" placeholder="0.00" />
+    </div>
+    <input type="text" id="egresoConcepto" placeholder="Concepto (ej. compra de bolsas)" />
+    <div class="modal-actions">
+      <button class="modal-cancel" id="egresoCancel">Cerrar</button>
+      <button class="modal-save" id="egresoSave">Guardar egreso</button>
+    </div>
+    <div class="status" id="egresoStatus"></div>
+    <div class="history-title" style="margin-top:16px;">Egresos de hoy</div>
+    <div id="egresoListEl"><div class="h-empty">Aún no hay egresos hoy.</div></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="resetModalBackdrop" style="display:none;">
+  <div class="modal">
+    <h3>¿Eliminar todos los registros?</h3>
+    <p>Esto borra permanentemente todas las ventas y egresos guardados en este dispositivo (lo que ya se sincronizó a Google Sheets no se toca). No se puede deshacer.</p>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="resetCancel">Cancelar</button>
+      <button class="modal-save" id="resetConfirm" style="background:var(--red);">Sí, eliminar todo</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const totalEl = document.getElementById('total');
   const paidEl = document.getElementById('paidWith');
@@ -616,6 +662,24 @@ function doGet(e) {
   function saveSalesLocal(){ return safeSet('salesHistory', JSON.stringify(sales)); }
 
   let sales = loadSales(); // historial persistido en este dispositivo (localStorage)
+
+  function loadEgresos(){
+    try {
+      const stored = JSON.parse(safeGet('egresosHistory')) || [];
+      const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000; // conserva 60 días
+      return stored.filter(e => new Date(e.timestamp).getTime() >= cutoff);
+    } catch(e){ return []; }
+  }
+  function saveEgresosLocal(){ return safeSet('egresosHistory', JSON.stringify(egresos)); }
+
+  let egresos = loadEgresos();
+
+  function sanitizeAmountInput(el){
+    let v = el.value.replace(',', '.').replace(/[^0-9.]/g, '');
+    const firstDot = v.indexOf('.');
+    if(firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+    el.value = v;
+  }
 
   // --- Calculadora (suma, resta, multiplicación) para el Total a cobrar ---
   const calcSubtotal = document.getElementById('calcSubtotal');
@@ -708,13 +772,7 @@ function doGet(e) {
     changeEl.classList.toggle('negative', changeCents < 0);
     return { total: totalCents / 100, paid: paidCents / 100, change: changeCents / 100, changeCents };
   }
-  paidEl.addEventListener('input', () => {
-    let v = paidEl.value.replace(',', '.').replace(/[^0-9.]/g, '');
-    const firstDot = v.indexOf('.');
-    if(firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
-    paidEl.value = v;
-    calcChange();
-  });
+  paidEl.addEventListener('input', () => { sanitizeAmountInput(paidEl); calcChange(); });
 
   let historyShowCount = 5;
 
@@ -817,6 +875,99 @@ function doGet(e) {
     statusEl.className = 'status' + (type ? ' ' + type : '');
     setTimeout(() => { if(statusEl.textContent === msg) statusEl.textContent=''; }, 4000);
   }
+
+  // --- Egresos ---
+  const egresoModalBackdrop = document.getElementById('egresoModalBackdrop');
+  const egresoMontoInput = document.getElementById('egresoMonto');
+  const egresoConceptoInput = document.getElementById('egresoConcepto');
+  const egresoStatus = document.getElementById('egresoStatus');
+  const egresoListEl = document.getElementById('egresoListEl');
+
+  function renderEgresoList(){
+    const today = todayISO();
+    const todaysEgresos = egresos.filter(e => deriveFields(e.timestamp).dateStr === today);
+    if(todaysEgresos.length === 0){
+      egresoListEl.innerHTML = '<div class="h-empty">Aún no hay egresos hoy.</div>';
+      return;
+    }
+    egresoListEl.innerHTML = todaysEgresos.slice().reverse().map(e => `
+      <div class="h-item">
+        <span>${e.concepto} · $${e.monto.toFixed(2)}</span>
+        <span class="t">${e.time}</span>
+      </div>
+    `).join('');
+  }
+
+  egresoMontoInput.addEventListener('input', () => sanitizeAmountInput(egresoMontoInput));
+
+  document.getElementById('egresoBtn').onclick = () => {
+    egresoStatus.textContent = '';
+    egresoStatus.className = 'status';
+    renderEgresoList();
+    egresoModalBackdrop.style.display = 'flex';
+  };
+  document.getElementById('egresoCancel').onclick = () => egresoModalBackdrop.style.display = 'none';
+
+  document.getElementById('egresoSave').onclick = async () => {
+    const monto = toCents(egresoMontoInput.value) / 100;
+    const concepto = egresoConceptoInput.value.trim();
+    if(monto <= 0){ egresoStatus.textContent = 'Escribe el monto del egreso.'; egresoStatus.className = 'status err'; return; }
+    if(!concepto){ egresoStatus.textContent = 'Escribe el concepto del egreso.'; egresoStatus.className = 'status err'; return; }
+
+    const now = new Date();
+    const record = {
+      monto, concepto, tipo: 'egreso',
+      vendedor: currentSeller,
+      time: now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'}),
+      fecha: now.toLocaleDateString('es-MX'),
+      timestamp: now.toISOString()
+    };
+
+    egresos.push(record);
+    const savedLocally = saveEgresosLocal();
+    renderEgresoList();
+    egresoMontoInput.value = '';
+    egresoConceptoInput.value = '';
+
+    const webhook = getWebhook();
+    if(!webhook){
+      egresoStatus.textContent = savedLocally ? 'Egreso guardado localmente.' : 'El storage del cel no guardó el egreso de forma permanente.';
+      egresoStatus.className = savedLocally ? 'status ok' : 'status err';
+      return;
+    }
+
+    try {
+      const resp = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(record)
+      });
+      if(!resp.ok) throw new Error('bad response');
+      egresoStatus.textContent = '✓ Egreso agregado a Google Sheets.';
+      egresoStatus.className = 'status ok';
+    } catch(err){
+      egresoStatus.textContent = savedLocally
+        ? 'No se pudo confirmar el envío, pero se guardó localmente.'
+        : 'No se pudo enviar a Sheets ni guardar en el storage del cel.';
+      egresoStatus.className = 'status err';
+    }
+  };
+
+  // --- Reiniciar ventas y egresos ---
+  const resetModalBackdrop = document.getElementById('resetModalBackdrop');
+  document.getElementById('resetBtn').onclick = () => { resetModalBackdrop.style.display = 'flex'; };
+  document.getElementById('resetCancel').onclick = () => resetModalBackdrop.style.display = 'none';
+  document.getElementById('resetConfirm').onclick = () => {
+    sales = [];
+    egresos = [];
+    saveSalesLocal();
+    saveEgresosLocal();
+    historyShowCount = 5;
+    renderHistory();
+    renderEgresoList();
+    resetModalBackdrop.style.display = 'none';
+    setStatus('Se eliminaron todos los registros de este dispositivo.', 'ok');
+  };
 
   // Configuración del webhook
   const settingsBtn = document.getElementById('settingsBtn');
