@@ -145,7 +145,7 @@
   .calc-key:active{ background:rgba(26,26,26,.14); }
   .calc-key.op{ background:var(--amber); color:var(--till-dark); }
   .calc-key.op:active{ background:#d18f28; }
-  .calc-key.clear{ background:var(--red); color:var(--paper); }
+  .calc-key.clear{ background:var(--red); color:var(--paper); grid-column: span 3; }
   .calc-key.equals{ background:var(--till); color:var(--paper); grid-row: span 2; height:100%; }
   .calc-key.zero{ grid-column: span 2; }
 
@@ -428,20 +428,22 @@
         <button class="calc-key" data-d="7">7</button>
         <button class="calc-key" data-d="8">8</button>
         <button class="calc-key" data-d="9">9</button>
-        <button class="calc-key op" data-op="-">−</button>
+        <button class="calc-key op" data-op="*">×</button>
 
         <button class="calc-key" data-d="4">4</button>
         <button class="calc-key" data-d="5">5</button>
         <button class="calc-key" data-d="6">6</button>
-        <button class="calc-key op" data-op="+">+</button>
+        <button class="calc-key op" data-op="-">−</button>
 
         <button class="calc-key" data-d="1">1</button>
         <button class="calc-key" data-d="2">2</button>
         <button class="calc-key" data-d="3">3</button>
-        <button class="calc-key equals" id="calcEquals">=</button>
+        <button class="calc-key op" data-op="+">+</button>
 
         <button class="calc-key zero" data-d="0">0</button>
         <button class="calc-key" data-d=".">.</button>
+        <button class="calc-key equals" id="calcEquals">=</button>
+
         <button class="calc-key clear" id="calcClear">C</button>
       </div>
 
@@ -591,26 +593,40 @@ function doGet(e) {
     quickBills.appendChild(btn);
   });
 
+  // El storage del cel puede fallar (modo privado, cuota llena, file://): nunca debe
+  // cortar el registro de una venta, así que toda lectura/escritura pasa por aquí.
+  function safeGet(key){ try { return localStorage.getItem(key); } catch(e){ return null; } }
+  function safeSet(key, value){ try { localStorage.setItem(key, value); return true; } catch(e){ return false; } }
+
   function loadSales(){
     try {
-      const stored = JSON.parse(localStorage.getItem('salesHistory')) || [];
+      const stored = JSON.parse(safeGet('salesHistory')) || [];
       const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000; // conserva 60 días
       return stored.filter(s => new Date(s.timestamp).getTime() >= cutoff);
     } catch(e){ return []; }
   }
-  function saveSalesLocal(){ localStorage.setItem('salesHistory', JSON.stringify(sales)); }
+  function saveSalesLocal(){ return safeSet('salesHistory', JSON.stringify(sales)); }
 
   let sales = loadSales(); // historial persistido en este dispositivo (localStorage)
 
-  // --- Calculadora (suma/resta) para el Total a cobrar ---
+  // --- Calculadora (suma, resta, multiplicación) para el Total a cobrar ---
   const calcSubtotal = document.getElementById('calcSubtotal');
   let calcAccum = null;
   let calcOp = null;
   let calcNewEntry = true;
 
+  const OP_SYMBOL = { '+': '+', '-': '−', '*': '×' };
+
+  function combine(a, b, op){
+    if(op === '+') return a + b;
+    if(op === '-') return a - b;
+    if(op === '*') return Math.round(a * b / 100);
+    return b;
+  }
+
   function updateSubtotalLabel(){
     if(calcOp && calcAccum !== null){
-      calcSubtotal.textContent = '$' + (calcAccum / 100).toFixed(2) + ' ' + (calcOp === '+' ? '+' : '−');
+      calcSubtotal.textContent = '$' + (calcAccum / 100).toFixed(2) + ' ' + OP_SYMBOL[calcOp];
     } else {
       calcSubtotal.innerHTML = '&nbsp;';
     }
@@ -634,7 +650,7 @@ function doGet(e) {
     if(calcAccum === null){
       calcAccum = current;
     } else if(!calcNewEntry){
-      calcAccum = (calcOp === '+') ? calcAccum + current : calcAccum - current;
+      calcAccum = combine(calcAccum, current, calcOp);
     }
     calcOp = op;
     calcNewEntry = true;
@@ -647,7 +663,7 @@ function doGet(e) {
     if(calcOp){
       const current = toCents(totalEl.textContent);
       if(!calcNewEntry){
-        calcAccum = (calcOp === '+') ? calcAccum + current : calcAccum - current;
+        calcAccum = combine(calcAccum, current, calcOp);
       }
       totalEl.textContent = (calcAccum / 100).toFixed(2);
     }
@@ -708,7 +724,7 @@ function doGet(e) {
   }
 
   const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwf-iHypUWD7_1mWKHSLnXi-pO_3xVUuXF10fiRHPh7-h_rkb6-kdcgIsr5EynPJkYgfw/exec';
-  function getWebhook(){ return localStorage.getItem('sheetsWebhook') || DEFAULT_WEBHOOK; }
+  function getWebhook(){ return safeGet('sheetsWebhook') || DEFAULT_WEBHOOK; }
 
   addBtn.addEventListener('click', async () => {
     const { total, paid, changeCents } = calcChange();
@@ -729,12 +745,14 @@ function doGet(e) {
     };
 
     sales.push(record);
-    saveSalesLocal();
+    const savedLocally = saveSalesLocal();
     renderHistory();
 
     const webhook = getWebhook();
     if(!webhook){
-      setStatus('Venta guardada localmente. Configura el enlace a Sheets para sincronizar.', 'ok');
+      setStatus(savedLocally
+        ? 'Venta guardada localmente. Configura el enlace a Sheets para sincronizar.'
+        : 'Venta agregada, pero el storage del cel no la guardó de forma permanente.', savedLocally ? 'ok' : 'err');
       resetInputs();
       return;
     }
@@ -752,7 +770,9 @@ function doGet(e) {
       if(!resp.ok) throw new Error('bad response');
       setStatus('✓ Venta agregada a Google Sheets.', 'ok');
     } catch(err){
-      setStatus('No se pudo confirmar el envío, pero se guardó localmente. Usa "Probar conexión" en Ajustes para revisar el enlace.', 'err');
+      setStatus(savedLocally
+        ? 'No se pudo confirmar el envío, pero se guardó localmente. Usa "Probar conexión" en Ajustes para revisar el enlace.'
+        : 'No se pudo enviar a Sheets ni guardar en el storage del cel. La venta solo quedó en esta pantalla, no la cierres sin reintentar.', 'err');
     } finally {
       addBtn.disabled = false;
       addBtn.classList.remove('sending');
@@ -789,7 +809,7 @@ function doGet(e) {
   };
   document.getElementById('modalCancel').onclick = () => modalBackdrop.style.display='none';
   document.getElementById('modalSave').onclick = () => {
-    localStorage.setItem('sheetsWebhook', webhookInput.value.trim());
+    safeSet('sheetsWebhook', webhookInput.value.trim());
     modalBackdrop.style.display='none';
     setStatus('Enlace guardado.', 'ok');
   };
@@ -838,14 +858,14 @@ function doGet(e) {
   const newSellerInput = document.getElementById('newSellerInput');
 
   function loadSellers(){
-    try { return JSON.parse(localStorage.getItem('sellers')) || []; }
+    try { return JSON.parse(safeGet('sellers')) || []; }
     catch(e){ return []; }
   }
-  function saveSellers(list){ localStorage.setItem('sellers', JSON.stringify(list)); }
+  function saveSellers(list){ safeSet('sellers', JSON.stringify(list)); }
 
   let sellers = loadSellers();
   if(sellers.length === 0){ sellers = ['Vendedor 1']; saveSellers(sellers); }
-  let currentSeller = localStorage.getItem('currentSeller') || sellers[0];
+  let currentSeller = safeGet('currentSeller') || sellers[0];
   if(!sellers.includes(currentSeller)) currentSeller = sellers[0];
 
   function renderSellerChip(){ sellerName.textContent = currentSeller; }
@@ -867,7 +887,7 @@ function doGet(e) {
     const del = e.target.closest('button.del');
     if(pick){
       currentSeller = pick.dataset.name;
-      localStorage.setItem('currentSeller', currentSeller);
+      safeSet('currentSeller', currentSeller);
       renderSellerChip();
       renderSellerList();
     } else if(del){
@@ -875,7 +895,7 @@ function doGet(e) {
       saveSellers(sellers);
       if(currentSeller === del.dataset.del){
         currentSeller = sellers[0];
-        localStorage.setItem('currentSeller', currentSeller);
+        safeSet('currentSeller', currentSeller);
         renderSellerChip();
       }
       renderSellerList();
@@ -888,7 +908,7 @@ function doGet(e) {
     if(!sellers.includes(name)) sellers.push(name);
     saveSellers(sellers);
     currentSeller = name;
-    localStorage.setItem('currentSeller', currentSeller);
+    safeSet('currentSeller', currentSeller);
     newSellerInput.value = '';
     renderSellerChip();
     renderSellerList();
