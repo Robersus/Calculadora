@@ -338,8 +338,9 @@
 
   .footer-links{
     display:flex;
+    flex-wrap:wrap;
     justify-content:center;
-    gap:18px;
+    gap:10px 16px;
   }
 
   .seller-list{ margin-bottom:14px; max-height:220px; overflow-y:auto; }
@@ -491,10 +492,11 @@
   <footer>
     <div class="footer-links">
       <button class="settings-link" id="summaryBtn">Resumen por vendedor</button>
+      <button class="settings-link" id="cajaChicaBtn">Caja chica</button>
       <button class="settings-link" id="egresoBtn">Registrar egreso</button>
       <button class="settings-link" id="settingsBtn">Enlace a Sheets</button>
     </div>
-    <button class="settings-link danger-link" id="resetBtn">Reiniciar ventas y egresos</button>
+    <button class="settings-link danger-link" id="resetBtn">Reiniciar ventas, egresos y caja chica</button>
   </footer>
 </div>
 
@@ -513,7 +515,7 @@
         <li>"Ejecutar como": Yo. "Quién tiene acceso": Cualquier usuario.</li>
         <li>Copia la URL que termina en <b>/exec</b> (no la de /dev) y pégala arriba.</li>
         <li>Si vuelves a editar el código, debes crear una <b>nueva versión</b> en Gestionar implementaciones — si no, la URL sigue usando el código viejo.</li>
-        <li>Los egresos se guardan en su propia pestaña "Egresos" de la misma hoja.</li>
+        <li>Los egresos y la caja chica se guardan en sus propias pestañas ("Egresos" y "CajaChica") de la misma hoja.</li>
       </ol>
       <pre><code>function doPost(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -521,6 +523,9 @@
   if (d.tipo === 'egreso') {
     const sh = ss.getSheetByName('Egresos') || ss.insertSheet('Egresos');
     sh.appendRow([d.timestamp, d.fecha, d.vendedor, d.monto, d.concepto]);
+  } else if (d.tipo === 'caja_chica') {
+    const sh = ss.getSheetByName('CajaChica') || ss.insertSheet('CajaChica');
+    sh.appendRow([d.timestamp, d.fecha, d.vendedor, d.monto]);
   } else {
     const sh = ss.getSheetByName('Ventas') || ss.insertSheet('Ventas');
     sh.appendRow([d.timestamp, d.fecha, d.hour24, d.vendedor, d.total, d.paid, d.change]);
@@ -618,10 +623,29 @@ function doGet(e) {
   </div>
 </div>
 
+<div class="modal-backdrop" id="cajaChicaModalBackdrop" style="display:none;">
+  <div class="modal">
+    <h3>Caja chica</h3>
+    <p>Registra el monto con el que inicia la caja hoy.</p>
+    <div class="field-label">Monto inicial</div>
+    <div class="amount-row">
+      <span class="currency">$</span>
+      <input class="amount" id="cajaChicaMonto" type="text" inputmode="decimal" placeholder="0.00" />
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="cajaChicaCancel">Cerrar</button>
+      <button class="modal-save" id="cajaChicaSave">Guardar</button>
+    </div>
+    <div class="status" id="cajaChicaStatus"></div>
+    <div class="history-title" style="margin-top:16px;">Caja chica de hoy</div>
+    <div id="cajaChicaInfo"><div class="h-empty">Aún no se ha registrado la caja chica de hoy.</div></div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="resetModalBackdrop" style="display:none;">
   <div class="modal">
     <h3>¿Eliminar todos los registros?</h3>
-    <p>Esto borra permanentemente todas las ventas y egresos guardados en este dispositivo (lo que ya se sincronizó a Google Sheets no se toca). No se puede deshacer.</p>
+    <p>Esto borra permanentemente todas las ventas, egresos y caja chica guardados en este dispositivo (lo que ya se sincronizó a Google Sheets no se toca). No se puede deshacer.</p>
     <div class="modal-actions">
       <button class="modal-cancel" id="resetCancel">Cancelar</button>
       <button class="modal-save" id="resetConfirm" style="background:var(--red);">Sí, eliminar todo</button>
@@ -673,6 +697,17 @@ function doGet(e) {
   function saveEgresosLocal(){ return safeSet('egresosHistory', JSON.stringify(egresos)); }
 
   let egresos = loadEgresos();
+
+  function loadCajaChica(){
+    try {
+      const stored = JSON.parse(safeGet('cajaChicaHistory')) || [];
+      const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000; // conserva 60 días
+      return stored.filter(c => new Date(c.timestamp).getTime() >= cutoff);
+    } catch(e){ return []; }
+  }
+  function saveCajaChicaLocal(){ return safeSet('cajaChicaHistory', JSON.stringify(cajaChica)); }
+
+  let cajaChica = loadCajaChica();
 
   function sanitizeAmountInput(el){
     let v = el.value.replace(',', '.').replace(/[^0-9.]/g, '');
@@ -953,18 +988,94 @@ function doGet(e) {
     }
   };
 
-  // --- Reiniciar ventas y egresos ---
+  // --- Caja chica ---
+  const cajaChicaModalBackdrop = document.getElementById('cajaChicaModalBackdrop');
+  const cajaChicaMontoInput = document.getElementById('cajaChicaMonto');
+  const cajaChicaStatus = document.getElementById('cajaChicaStatus');
+  const cajaChicaInfo = document.getElementById('cajaChicaInfo');
+
+  function renderCajaChicaInfo(){
+    const today = todayISO();
+    const todays = cajaChica.filter(c => deriveFields(c.timestamp).dateStr === today);
+    if(todays.length === 0){
+      cajaChicaInfo.innerHTML = '<div class="h-empty">Aún no se ha registrado la caja chica de hoy.</div>';
+      return;
+    }
+    const last = todays[todays.length - 1];
+    cajaChicaInfo.innerHTML = `
+      <div class="h-item"><span>Monto inicial</span><span>$${last.monto.toFixed(2)}</span></div>
+      <div class="h-item"><span>Registrado por</span><span>${last.vendedor} · ${last.time}</span></div>
+    `;
+  }
+
+  cajaChicaMontoInput.addEventListener('input', () => sanitizeAmountInput(cajaChicaMontoInput));
+
+  document.getElementById('cajaChicaBtn').onclick = () => {
+    cajaChicaStatus.textContent = '';
+    cajaChicaStatus.className = 'status';
+    cajaChicaMontoInput.value = '';
+    renderCajaChicaInfo();
+    cajaChicaModalBackdrop.style.display = 'flex';
+  };
+  document.getElementById('cajaChicaCancel').onclick = () => cajaChicaModalBackdrop.style.display = 'none';
+
+  document.getElementById('cajaChicaSave').onclick = async () => {
+    const monto = toCents(cajaChicaMontoInput.value) / 100;
+    if(monto <= 0){ cajaChicaStatus.textContent = 'Escribe el monto inicial de la caja.'; cajaChicaStatus.className = 'status err'; return; }
+
+    const now = new Date();
+    const record = {
+      monto, tipo: 'caja_chica',
+      vendedor: currentSeller,
+      time: now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'}),
+      fecha: now.toLocaleDateString('es-MX'),
+      timestamp: now.toISOString()
+    };
+
+    cajaChica.push(record);
+    const savedLocally = saveCajaChicaLocal();
+    renderCajaChicaInfo();
+    cajaChicaMontoInput.value = '';
+
+    const webhook = getWebhook();
+    if(!webhook){
+      cajaChicaStatus.textContent = savedLocally ? 'Caja chica guardada localmente.' : 'El storage del cel no guardó la caja chica de forma permanente.';
+      cajaChicaStatus.className = savedLocally ? 'status ok' : 'status err';
+      return;
+    }
+
+    try {
+      const resp = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(record)
+      });
+      if(!resp.ok) throw new Error('bad response');
+      cajaChicaStatus.textContent = '✓ Caja chica agregada a Google Sheets.';
+      cajaChicaStatus.className = 'status ok';
+    } catch(err){
+      cajaChicaStatus.textContent = savedLocally
+        ? 'No se pudo confirmar el envío, pero se guardó localmente.'
+        : 'No se pudo enviar a Sheets ni guardar en el storage del cel.';
+      cajaChicaStatus.className = 'status err';
+    }
+  };
+
+  // --- Reiniciar ventas, egresos y caja chica ---
   const resetModalBackdrop = document.getElementById('resetModalBackdrop');
   document.getElementById('resetBtn').onclick = () => { resetModalBackdrop.style.display = 'flex'; };
   document.getElementById('resetCancel').onclick = () => resetModalBackdrop.style.display = 'none';
   document.getElementById('resetConfirm').onclick = () => {
     sales = [];
     egresos = [];
+    cajaChica = [];
     saveSalesLocal();
     saveEgresosLocal();
+    saveCajaChicaLocal();
     historyShowCount = 5;
     renderHistory();
     renderEgresoList();
+    renderCajaChicaInfo();
     resetModalBackdrop.style.display = 'none';
     setStatus('Se eliminaron todos los registros de este dispositivo.', 'ok');
   };
@@ -1123,11 +1234,13 @@ function doGet(e) {
   document.getElementById('summaryBtn').onclick = () => {
     summarySeller.innerHTML = '<option value="__all__">Todos</option>' +
       sellers.map(s => `<option value="${s}">${s}</option>`).join('');
-    if(!summaryDateInput.value) summaryDateInput.value = todayISO();
-    summaryResults.innerHTML = '';
-    document.getElementById('pieWrap').style.display = 'none';
-    summarySyncNote.textContent = 'Filtra por vendedor, fecha y rango de hora.';
+    summarySeller.value = '__all__';
+    summaryDateInput.value = '';
+    document.getElementById('summaryFrom').value = '';
+    document.getElementById('summaryTo').value = '';
+    summarySyncNote.textContent = 'Mostrando todo. Filtra por vendedor, fecha u hora y presiona Calcular.';
     summaryModalBackdrop.style.display = 'flex';
+    runSummary();
   };
   document.getElementById('summaryClose').onclick = () => summaryModalBackdrop.style.display = 'none';
 
@@ -1193,7 +1306,7 @@ function doGet(e) {
       </div>`;
   }
 
-  document.getElementById('summaryCalc').onclick = async () => {
+  async function runSummary(){
     const who = summarySeller.value;
     const dateFilter = summaryDateInput.value; // "YYYY-MM-DD" o ""
     const from = document.getElementById('summaryFrom').value; // "HH:MM" o ""
@@ -1232,7 +1345,8 @@ function doGet(e) {
     });
 
     renderSummary(filtered);
-  };
+  }
+  document.getElementById('summaryCalc').onclick = runSummary;
 
   renderHistory();
 </script>
