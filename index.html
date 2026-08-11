@@ -234,6 +234,14 @@
     border-bottom:1px dotted var(--line);
   }
   .h-item .t{ opacity:.45; font-size:11px; }
+  #historyList{ max-height:260px; overflow-y:auto; }
+  .history-more{
+    display:block; width:100%; margin-top:10px; padding:10px;
+    font-family:'JetBrains Mono', monospace; font-weight:700; font-size:12px;
+    background:transparent; border:1.5px dashed var(--ink); border-radius:8px; cursor:pointer;
+    color:var(--ink);
+  }
+  .history-more:active{ background:rgba(26,26,26,.06); }
   .h-empty{
     font-family:'JetBrains Mono', monospace;
     font-size:12px;
@@ -708,20 +716,34 @@ function doGet(e) {
     calcChange();
   });
 
+  let historyShowCount = 5;
+
   function renderHistory(){
     const today = todayISO();
-    const todaysSales = sales.filter(s => (s.timestamp || '').slice(0, 10) === today);
+    const todaysSales = sales.filter(s => deriveFields(s.timestamp).dateStr === today);
     if(todaysSales.length === 0){
       historyList.innerHTML = '<div class="h-empty">Aún no hay ventas registradas.</div>';
       return;
     }
-    historyList.innerHTML = todaysSales.slice().reverse().map(s => `
+    const ordered = todaysSales.slice().reverse();
+    const visible = ordered.slice(0, historyShowCount);
+    let html = visible.map(s => `
       <div class="h-item">
         <span>${s.vendedor} · Total $${s.total.toFixed(2)} · Pagó $${s.paid.toFixed(2)}</span>
         <span class="t">${s.time}</span>
       </div>
     `).join('');
+    if(ordered.length > historyShowCount){
+      html += `<button class="history-more" id="historyMoreBtn">Ver 5 más (${ordered.length - historyShowCount} restantes)</button>`;
+    }
+    historyList.innerHTML = html;
   }
+  historyList.addEventListener('click', (e) => {
+    if(e.target.id === 'historyMoreBtn'){
+      historyShowCount += 5;
+      renderHistory();
+    }
+  });
 
   const DEFAULT_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwf-iHypUWD7_1mWKHSLnXi-pO_3xVUuXF10fiRHPh7-h_rkb6-kdcgIsr5EynPJkYgfw/exec';
   function getWebhook(){ return safeGet('sheetsWebhook') || DEFAULT_WEBHOOK; }
