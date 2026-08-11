@@ -15,11 +15,13 @@
     --amber:#E8A33D;
     --red:#C1443C;
     --line: rgba(26,26,26,0.12);
+    --till-grad: linear-gradient(180deg, #123C61 0%, #123C61 26%, #7A2A38 60%, #9C6A18 100%);
+    --till-dark-grad: linear-gradient(180deg, #0A2540 0%, #0A2540 26%, #4E1B26 60%, #5C4012 100%);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
   body{
-    background:var(--till-dark);
+    background:var(--till-dark-grad);
     font-family:'Space Grotesk', sans-serif;
     color:var(--ink);
     min-height:100vh;
@@ -31,7 +33,7 @@
     width:100%;
     max-width:480px;
     min-height:100vh;
-    background:var(--till);
+    background:var(--till-grad);
     display:flex;
     flex-direction:column;
   }
@@ -446,7 +448,7 @@
       <div class="field-label">Pagó con</div>
       <div class="amount-row">
         <span class="currency">$</span>
-        <input class="amount" id="paidWith" type="number" inputmode="decimal" placeholder="0.00" />
+        <input class="amount" id="paidWith" type="text" inputmode="decimal" placeholder="0.00" />
       </div>
       <div class="quick-bills" id="quickBills"></div>
 
@@ -682,7 +684,13 @@ function doGet(e) {
     changeEl.classList.toggle('negative', changeCents < 0);
     return { total: totalCents / 100, paid: paidCents / 100, change: changeCents / 100, changeCents };
   }
-  paidEl.addEventListener('input', calcChange);
+  paidEl.addEventListener('input', () => {
+    let v = paidEl.value.replace(',', '.').replace(/[^0-9.]/g, '');
+    const firstDot = v.indexOf('.');
+    if(firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+    paidEl.value = v;
+    calcChange();
+  });
 
   function renderHistory(){
     const today = todayISO();
