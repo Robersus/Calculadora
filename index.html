@@ -445,6 +445,7 @@
     font-family:'Space Grotesk'; font-weight:600; font-size:14px;
     background:var(--till); color:var(--paper);
   }
+  .auth-box button:disabled{ opacity:.5; cursor:default; }
 </style>
 </head>
 <body>
@@ -716,29 +717,56 @@ function doGet(e) {
   function safeSet(key, value){ try { localStorage.setItem(key, value); return true; } catch(e){ return false; } }
 
   // --- Login: bloquea toda la app hasta ingresar usuario y contraseña. ---
-  const AUTH_USER = 'tienda';
-  const AUTH_PASS = '080584$';
+  // El usuario/contraseña vive en TU hoja de Google (no en este código), para que
+  // puedas cambiarlos editando una celda en vez de pedir un cambio de código cada vez.
+  // Reemplaza esta URL por la de TU Apps Script de login antes de vender copias.
+  const AUTH_CHECK_URL = 'PON_AQUI_TU_URL_DE_LOGIN';
 
   const authGate = document.getElementById('authGate');
   const authUserInput = document.getElementById('authUser');
   const authPassInput = document.getElementById('authPass');
   const authStatusMsg = document.getElementById('authStatusMsg');
+  const authLoginBtn = document.getElementById('authLoginBtn');
 
-  function attemptLogin(){
+  async function attemptLogin(){
     const u = authUserInput.value.trim();
     const p = authPassInput.value;
-    if(u === AUTH_USER && p === AUTH_PASS){
-      safeSet('loggedIn', 'yes');
-      authStatusMsg.textContent = '';
-      authGate.style.display = 'none';
-    } else {
-      authStatusMsg.textContent = 'Usuario o contraseña incorrectos.';
+    if(!u || !p){
+      authStatusMsg.textContent = 'Escribe usuario y contraseña.';
       authStatusMsg.className = 'status err';
-      authPassInput.value = '';
-      authPassInput.focus();
+      return;
+    }
+
+    authLoginBtn.disabled = true;
+    authStatusMsg.textContent = 'Verificando…';
+    authStatusMsg.className = 'status';
+
+    try {
+      const resp = await fetch(AUTH_CHECK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ user: u, pass: p })
+      });
+      if(!resp.ok) throw new Error('http');
+      const data = await resp.json();
+      if(data && data.ok){
+        safeSet('loggedIn', 'yes');
+        authStatusMsg.textContent = '';
+        authGate.style.display = 'none';
+      } else {
+        authStatusMsg.textContent = 'Usuario o contraseña incorrectos.';
+        authStatusMsg.className = 'status err';
+        authPassInput.value = '';
+        authPassInput.focus();
+      }
+    } catch(err){
+      authStatusMsg.textContent = 'No se pudo conectar para verificar. Revisa tu internet e intenta de nuevo.';
+      authStatusMsg.className = 'status err';
+    } finally {
+      authLoginBtn.disabled = false;
     }
   }
-  document.getElementById('authLoginBtn').onclick = attemptLogin;
+  authLoginBtn.onclick = attemptLogin;
   [authUserInput, authPassInput].forEach(el => {
     el.addEventListener('keydown', (e) => { if(e.key === 'Enter') attemptLogin(); });
   });
