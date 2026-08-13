@@ -419,9 +419,48 @@
   }
   .modal-save{ background:var(--till); color:var(--paper); }
   .modal-cancel{ background:transparent; border:1.5px solid var(--ink) !important; }
+
+  .auth-gate{
+    position:fixed; inset:0; z-index:9999;
+    background:var(--till-dark-grad);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .auth-box{
+    background:var(--paper); width:100%; max-width:360px;
+    border-radius:16px; padding:28px 22px; text-align:center;
+  }
+  .auth-box .eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:rgba(26,26,26,.5); margin-bottom:6px;
+  }
+  .auth-box h2{ font-family:'Archivo Black', sans-serif; font-size:20px; margin:0 0 10px; }
+  .auth-box p{ font-family:'JetBrains Mono', monospace; font-size:12px; line-height:1.5; color:rgba(26,26,26,.65); margin:0 0 16px; }
+  .auth-box input{
+    width:100%; padding:12px; font-family:'JetBrains Mono', monospace; font-size:13px;
+    border:1.5px solid var(--ink); border-radius:8px; margin-bottom:12px; text-align:center;
+  }
+  .auth-box button{
+    width:100%; padding:13px; border-radius:8px; border:none; cursor:pointer;
+    font-family:'Space Grotesk'; font-weight:600; font-size:14px;
+    background:var(--till); color:var(--paper);
+  }
 </style>
 </head>
 <body>
+
+<div class="auth-gate" id="authGate">
+  <div class="auth-box">
+    <div class="eyebrow">La Caja</div>
+    <h2>Iniciar sesión</h2>
+    <p>Ingresa el usuario y la contraseña para usar la caja.</p>
+    <input type="text" id="authUser" placeholder="Usuario" autocomplete="username" />
+    <input type="password" id="authPass" placeholder="Contraseña" autocomplete="current-password" />
+    <button id="authLoginBtn">Entrar</button>
+    <div class="status" id="authStatusMsg"></div>
+  </div>
+</div>
+
 <div class="phone">
   <header>
     <div class="eyebrow">La Caja · Registro rápido</div>
@@ -675,6 +714,38 @@ function doGet(e) {
   // cortar el registro de una venta, así que toda lectura/escritura pasa por aquí.
   function safeGet(key){ try { return localStorage.getItem(key); } catch(e){ return null; } }
   function safeSet(key, value){ try { localStorage.setItem(key, value); return true; } catch(e){ return false; } }
+
+  // --- Login: bloquea toda la app hasta ingresar usuario y contraseña. ---
+  const AUTH_USER = 'tienda';
+  const AUTH_PASS = '080584$';
+
+  const authGate = document.getElementById('authGate');
+  const authUserInput = document.getElementById('authUser');
+  const authPassInput = document.getElementById('authPass');
+  const authStatusMsg = document.getElementById('authStatusMsg');
+
+  function attemptLogin(){
+    const u = authUserInput.value.trim();
+    const p = authPassInput.value;
+    if(u === AUTH_USER && p === AUTH_PASS){
+      safeSet('loggedIn', 'yes');
+      authStatusMsg.textContent = '';
+      authGate.style.display = 'none';
+    } else {
+      authStatusMsg.textContent = 'Usuario o contraseña incorrectos.';
+      authStatusMsg.className = 'status err';
+      authPassInput.value = '';
+      authPassInput.focus();
+    }
+  }
+  document.getElementById('authLoginBtn').onclick = attemptLogin;
+  [authUserInput, authPassInput].forEach(el => {
+    el.addEventListener('keydown', (e) => { if(e.key === 'Enter') attemptLogin(); });
+  });
+
+  if(safeGet('loggedIn') === 'yes'){
+    authGate.style.display = 'none';
+  }
 
   function loadSales(){
     try {
